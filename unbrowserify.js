@@ -1,10 +1,24 @@
 /*jslint node: true */
-"use strict";
+'use strict';
 
-var uglifyJS = require("uglifyjs"),
-    fs = require("fs"),
-    path = require("path"),
-    decompress = require("./decompress");
+const Promise = require('bluebird');
+
+const fs = Promise.promisifyAll(require('fs'));
+const path = require('path');
+
+const _ = require('lodash');
+const uglifyJS = require('uglifyjs')
+const decompress = require('./decompress');
+
+const assert = require('assert');
+
+/* Default options */
+
+const outputOptions = {
+    beautify: true,
+    ascii_only: true,
+    bracketize: true
+};
 
 /* Override printing of variable definitions to output each var on a separate line. */
 uglifyJS.AST_Definitions.prototype._do_print = function (output, kind) {
@@ -26,7 +40,7 @@ uglifyJS.AST_Definitions.prototype._do_print = function (output, kind) {
         output.with_indent(output.indentation() + 4, function () {
             self.definitions.forEach(function (def, i) {
                 if (i !== 0) {
-                    output.print(",");
+                    output.print(',');
                     output.newline();
                     output.indent();
                 }
@@ -39,53 +53,49 @@ uglifyJS.AST_Definitions.prototype._do_print = function (output, kind) {
     }
 };
 
-function parseFile(filename) {
-    var code = fs.readFileSync(filename, "utf8"),
-        ast = uglifyJS.parse(code, {filename: filename});
+const parseFile = function* (filename) {
+    const code = yield fs.readFileAsync(filename, 'utf8');
+
+    const ast = uglifyJS.parse(code, {
+        filename
+    });
 
     ast.figure_out_scope();
+
     return ast;
-}
+};
 
 function outputCode(ast, filename) {
-    var options = {
-            beautify: true,
-            ascii_only: true,
-            bracketize: true
-        },
-        code = ast.print_to_string(options);
+    const code = ast.print_to_string(outputOptions);
 
-    if (filename) {
-        fs.writeFileSync(filename, code);
-    } else {
-        console.log(code);
-    }
+    if (!filename) return console.log(code);
+
+    return fs.writeFileAsync(filename, code);
 }
 
-function findMainFunction(ast) {
-    var mainFunctionCall,
-        visitor;
+const findMainFunction = ast => {
+    let mainFunctionCall;
 
-    visitor = new uglifyJS.TreeWalker(function (node) {
+    const visitor = new uglifyJS.TreeWalker(node => {
         if (node instanceof uglifyJS.AST_Call) {
-            if (mainFunctionCall === undefined) {
-                mainFunctionCall = node;
-            } else {
-                console.warn("More than one top-level function found.");
-            }
+            assert(mainFunctionCall === undefined, 'More than one top-level function found.');
+
+            mainFunctionCall = node;
+
             return true;
         }
     });
 
     ast.walk(visitor);
+
     return mainFunctionCall;
 }
 
-function extractModuleNames(moduleObject, main) {
+const extractModuleNames = (moduleObject, main) => {
     var moduleNames = {};
 
-    main.elements.forEach(function (element) {
-        moduleNames[element.value] = "main";
+    main.elements.forEach(element => {
+        moduleNames[element.value] = 'main';
     });
 
     moduleObject.properties.forEach(function (objectProperty) {
@@ -96,15 +106,15 @@ function extractModuleNames(moduleObject, main) {
         /* TODO: Resolve module names relative to output directory. */
 
         requireMapping.properties.forEach(function (prop) {
-            var name = path.basename(prop.key, ".js"),
+            var name = path.basename(prop.key, '.js'),
                 id = prop.value.value;
 
             if (!moduleNames[id]) {
                 moduleNames[id] = name;
             } else if (moduleNames[id].toLowerCase() !== name.toLowerCase()) {
-                console.warn("More than one name found for module " + id + ":");
-                console.warn("    " + moduleNames[id]);
-                console.warn("    " + name);
+                console.warn('More than one name found for module ' + id + ':');
+                console.warn('    ' + moduleNames[id]);
+                console.warn('    ' + name);
             }
         });
     });
@@ -114,8 +124,8 @@ function extractModuleNames(moduleObject, main) {
 
 function renameArguments(moduleFunction) {
     var argNames = [
-        "require", "module", "exports", "moduleSource",
-        "loadedModules", "mainIds"
+        'require', 'module', 'exports', 'moduleSource',
+        'loadedModules', 'mainIds'
     ];
 
     /* Rename the function arguments (if needed). The code generator has
@@ -130,16 +140,17 @@ function renameArguments(moduleFunction) {
 function updateRequires(moduleFunction, mapping) {
     var visitor, name;
 
-    visitor = new uglifyJS.TreeWalker(function (node) {
+    visitor = new uglifyJS.TreeWalker(node => {
         if (node instanceof uglifyJS.AST_Call &&
                 node.expression instanceof uglifyJS.AST_SymbolRef &&
-                (node.expression.name === "require" || node.expression.thedef.mangled_name === "require") &&
+                (node.expression.name === 'require' || node.expression.thedef.mangled_name === 'require') &&
                 node.args.length === 1 &&
                 node.args[0] instanceof uglifyJS.AST_String) {
 
-            name = path.basename(node.args[0].value, ".js");
+            name = path.basename(node.args[0].value, '.js');
+
             if (mapping[name]) {
-                node.args[0].value = "./" + mapping[name] + ".js";
+                node.args[0].value = './' + mapping[name] + '.js';
             }
         }
     });
@@ -147,50 +158,98 @@ function updateRequires(moduleFunction, mapping) {
     moduleFunction.walk(visitor);
 }
 
+const resolveModulePaths = moduleDefinitions => {
+    /* DAG archtitecture
+
+        edge <---- visitor
+          ^______/   |
+                     |
+            edge     |
+              ^______/
+
+        Map_edge -> Set -> visitors
+    */
+
+    // Map<key, Set<String>>
+    const knownPaths = new Map();
+
+    // Set<path, originName>
+    const registerPathMapping = (moduleName, path) => {
+        const knownPath = knownPaths.get(path);
+
+        if (!knownPath) {
+            return knownPaths.set(path, new Set([moduleName]));
+        }
+
+        knownPath.has(moduleName) || knownPath.add(moduleName);
+    };
+
+    // nop: resolve file paths
+    moduleDefinitions.forEach(moduleDefinition => {
+        const {moduleName, moduleMapping} = moduleDefinition;
+
+        moduleMapping.forEach(([realPath, id]) => {
+            registerPathMapping(moduleName, path);
+        });
+    });
+
+    return moduleDefinitions.map(moduleDefinition => {
+        const {moduleName, moduleMapping, moduleFunction} = moduleDefinition;
+
+        const resolvedMapping = moduleMapping.map(([realPath, id]) => {
+            return [path.basename(moduleName, '.js'), id]
+        });
+
+        return {moduleName, moduleFunction, moduleMapping: resolvedMapping};
+    });
+};
+
 function extractModules(moduleObject, moduleNames) {
-    var modules = {};
+    const modules = {};
 
     modules.main = new uglifyJS.AST_Toplevel({body: []});
 
-    moduleObject.properties.forEach(function (objectProperty) {
-        var moduleId = objectProperty.key,
-            moduleFunction = objectProperty.value.elements[0],
-            requireMapping = objectProperty.value.elements[1],
-            moduleName = moduleNames[moduleId],
-            topLevel,
-            mapping = {};
+    // moduleName moduleFunction
+    const moduleProperties = moduleObject.properties.map(objectProperty => {
+        const moduleId = objectProperty.key;
+        const [moduleFunction, requireMapping] = objectProperty.value.elements;
 
-        requireMapping.properties.forEach(function (prop) {
-            var name = path.basename(prop.key, ".js"),
-                id = prop.value.value;
-            mapping[name] = moduleNames[id];
+        const moduleName = moduleNames[moduleId];
+
+        let moduleMapping = [];
+
+        requireMapping.properties.forEach(({key, value}) => {
+            const rKey = path.basename(key, '.js');
+            const id = value.value;
+
+            moduleMapping.push([rKey, moduleNames[id]]);
         });
 
-        if (modules[moduleName]) {
-            topLevel = modules[moduleName];
-        } else {
-            topLevel = modules[moduleName] = new uglifyJS.AST_Toplevel({body: []});
-        }
+        return {moduleName, moduleFunction, moduleMapping};
+    });
+
+    //const resolvedModuleProperties = resolveModulePaths(moduleProperties);
+    const resolvedModuleProperties = moduleProperties;
+
+    resolvedModuleProperties.forEach(({moduleName, moduleFunction, moduleMapping}) => {
+        const module = modules[moduleName] || new uglifyJS.AST_Toplevel({body: []});
+
+        modules[moduleName] = module;
 
         renameArguments(moduleFunction);
-        updateRequires(moduleFunction, mapping);
+        updateRequires(moduleFunction, moduleMapping);
 
-        topLevel.body = topLevel.body.concat(moduleFunction.body);
+        modules[moduleName].body = [
+            ...modules[moduleName].body,
+            ...moduleFunction.body
+        ];
     });
 
     return modules;
 }
 
-function unbrowserify(filename, outputDirectory) {
-    var mainFunction,
-        moduleObject,
-        main,
-        modules,
-        moduleNames,
-        moduleName,
-        moduleFile,
-        module,
-        ast = parseFile(filename);
+const unbrowserify = Promise.coroutine(function* (filename, outputDirectory) {
+    const ast = yield* parseFile(filename);
 
     /*
      Top level of each file should be:
@@ -207,40 +266,35 @@ function unbrowserify(filename, outputDirectory) {
      literal of module name to id mappings.
      */
 
-    mainFunction = findMainFunction(ast);
-    if (!mainFunction) {
-        console.error(filename + ": unable to find main function.");
-        return;
-    }
+    const mainFunction = findMainFunction(ast);
 
-    moduleObject = mainFunction.args[0];
-    main = mainFunction.args[2];
+    assert(mainFunction !== undefined, `${filename}: unable to find main function.`);
 
-    if (!(moduleObject instanceof uglifyJS.AST_Object)) {
-        console.error(filename + ": first argument should be an object");
-        return;
-    }
+    const [moduleObject, __nop__, main] = mainFunction.args;
 
-    moduleNames = extractModuleNames(moduleObject, main);
-    modules = extractModules(moduleObject, moduleNames);
+    assert(moduleObject instanceof uglifyJS.AST_Object, `${filename}: first argument should be an object.`);
 
-    for (moduleName in modules) {
-        if (modules.hasOwnProperty(moduleName)) {
-            module = modules[moduleName];
+    const moduleNames = extractModuleNames(moduleObject, main);
+    const modules = extractModules(moduleObject, moduleNames);
+
+    Promise.all(
+        Object.keys(modules)
+        .map(module => [module, modules[module]])
+        .map(([moduleName, module]) => {
             decompress(module);
 
-            moduleFile = path.join(outputDirectory, moduleName + ".js");
-            console.log("Writing " + moduleFile);
+            const moduleFile = path.join(outputDirectory, moduleName + '.js');
+            console.log('Writing %s', moduleFile);
 
-            outputCode(module, moduleFile);
-        }
-    }
-}
+            return outputCode(module, moduleFile);
+        })
+    );
+});
 
 module.exports = {
-    outputCode: outputCode,
-    findMainFunction: findMainFunction,
-    extractModuleNames: extractModuleNames,
-    extractModules: extractModules,
-    unbrowserify: unbrowserify
+    outputCode,
+    findMainFunction,
+    extractModuleNames,
+    extractModules,
+    unbrowserify
 };

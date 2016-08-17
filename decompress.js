@@ -1,24 +1,24 @@
-/*jslint node: true */
-"use strict";
+const uglifyJS = require('uglifyjs');
+const _ = require('lodash');
 
-var uglifyJS = require("uglifyjs"),
-    defaultOptions = {
-        constants: true,
-        sequences: true,
-        conditionals: true
-    };
+const defaultOptions = {
+    constants: true,
+    sequences: true,
+    conditionals: true
+};
 
 function asStatement(node) {
     if (node instanceof uglifyJS.AST_Statement) {
         return node;
     }
+
     return new uglifyJS.AST_SimpleStatement({ body: node });
 }
 
 function replaceInBlock(node, field, replace) {
-    var i, newNodes,
-        body = node[field],
-        single = body instanceof uglifyJS.AST_Node;
+    let newNodes;
+    let body = node[field];
+    const single = body instanceof uglifyJS.AST_Node;
 
     if (body === null || body === undefined) {
         return;
@@ -28,11 +28,14 @@ function replaceInBlock(node, field, replace) {
         body = [body];
     }
 
-    i = 0;
+    let i = 0;
+
     while (i < body.length) {
         newNodes = replace(body[i], i, body);
+
         if (newNodes) {
             newNodes.unshift(i, 1);
+
             Array.prototype.splice.apply(body, newNodes);
         } else {
             i += 1;
@@ -43,31 +46,34 @@ function replaceInBlock(node, field, replace) {
         if (body.length === 1) {
             node[field] = body[0];
         } else {
-            node[field] = new uglifyJS.AST_BlockStatement({body: body});
+            node[field] = new uglifyJS.AST_BlockStatement({body});
         }
     }
 }
 
 function removeSequences(node, field) {
-    var nodeTypes = [
-        { type: uglifyJS.AST_Return, field: "value" },
-        { type: uglifyJS.AST_SimpleStatement, field: "body" },
-        { type: uglifyJS.AST_If, field: "condition" },
-        { type: uglifyJS.AST_For, field: "init" },
-        { type: uglifyJS.AST_With, field: "expression" },
-        { type: uglifyJS.AST_Switch, field: "expression" }
+    const nodeTypes = [
+        { type: uglifyJS.AST_Return, field: 'value' },
+        { type: uglifyJS.AST_SimpleStatement, field: 'body' },
+        { type: uglifyJS.AST_If, field: 'condition' },
+        { type: uglifyJS.AST_For, field: 'init' },
+        { type: uglifyJS.AST_With, field: 'expression' },
+        { type: uglifyJS.AST_Switch, field: 'expression' }
     ];
 
-    replaceInBlock(node, field, function (child) {
-        var j, seq;
+    replaceInBlock(node, field, child => {
+        let j, seq;
 
         if (child instanceof uglifyJS.AST_Var) {
-            for (j = 0; j < child.definitions.length; j += 1) {
-                if (child.definitions[j].value instanceof uglifyJS.AST_Seq) {
-                    seq = child.definitions[j].value;
-                    child.definitions[j].value = seq.cdr;
-                    return [new uglifyJS.AST_SimpleStatement({body: seq.car}), child];
-                }
+            const resolvedChildDefinition = child.definitions.find(childDefinition =>
+                childDefinition.value instanceof uglifyJS.AST_Seq
+            );
+
+            if (resolvedChildDefinition) {
+                seq = resolvedChildDefinition.value;
+                resolvedChildDefinition.value = seq.cdr;
+
+                return [new uglifyJS.AST_SimpleStatement({body: seq.car}), child];
             }
         }
 
@@ -79,34 +85,38 @@ function removeSequences(node, field) {
             return [new uglifyJS.AST_SimpleStatement({body: seq.car}), child];
         }
 
-        for (j = 0; j < nodeTypes.length; j += 1) {
-            if (child instanceof nodeTypes[j].type && child[nodeTypes[j].field] instanceof uglifyJS.AST_Seq) {
-                seq = child[nodeTypes[j].field];
-                child[nodeTypes[j].field] = seq.cdr;
-                return [new uglifyJS.AST_SimpleStatement({body: seq.car}), child];
-            }
-        }
+        const resolvedNodeType = nodeTypes.find(nodeType =>
+            child instanceof nodeType.type
+            && child[nodeType.field] instanceof uglifyJS.AST_Seq
+        );
+
+        if (!resolvedNodeType) return;
+
+        seq = child[resolvedNodeType.field];
+        child[resolvedNodeType.field] = seq.cdr;
+
+        return [new uglifyJS.AST_SimpleStatement({body: seq.car}), child];
     });
 }
 
 function transformBefore(node) {
     if (this.options.constants) {
         /* 0/0 => NaN */
-        if (node instanceof uglifyJS.AST_Binary && node.operator === "/" &&
+        if (node instanceof uglifyJS.AST_Binary && node.operator === '/' &&
                 node.left instanceof uglifyJS.AST_Number && node.left.value === 0 &&
                 node.right instanceof uglifyJS.AST_Number && node.right.value === 0) {
             return new uglifyJS.AST_NaN();
         }
 
         /* 1/0 => Infinity */
-        if (node instanceof uglifyJS.AST_Binary && node.operator === "/" &&
+        if (node instanceof uglifyJS.AST_Binary && node.operator === '/' &&
                 node.left instanceof uglifyJS.AST_Number && node.left.value === 1 &&
                 node.right instanceof uglifyJS.AST_Number && node.right.value === 0) {
             return new uglifyJS.AST_Infinity();
         }
 
         /* !0 => true, !1 => false */
-        if (node instanceof uglifyJS.AST_UnaryPrefix && node.operator === "!" &&
+        if (node instanceof uglifyJS.AST_UnaryPrefix && node.operator === '!' &&
                 node.expression instanceof uglifyJS.AST_Number) {
             if (node.expression.value === 0) {
                 return new uglifyJS.AST_True();
@@ -119,11 +129,11 @@ function transformBefore(node) {
 
     if (this.options.sequences) {
         if (node instanceof uglifyJS.AST_Block) {
-            removeSequences(node, "body");
+            removeSequences(node, 'body');
         } else if (node instanceof uglifyJS.AST_StatementWithBody) {
-            removeSequences(node, "body");
+            removeSequences(node, 'body');
             if (node instanceof uglifyJS.AST_If) {
-                removeSequences(node, "alternative");
+                removeSequences(node, 'alternative');
             }
         }
     }
@@ -131,7 +141,7 @@ function transformBefore(node) {
     if (this.options.conditionals) {
         if (node instanceof uglifyJS.AST_SimpleStatement && node.body instanceof uglifyJS.AST_Binary) {
             /* a && b; => if (a) { b; } */
-            if (node.body.operator === "&&") {
+            if (node.body.operator === '&&') {
                 node = new uglifyJS.AST_If({
                     condition: node.body.left,
                     body: asStatement(node.body.right),
@@ -141,9 +151,9 @@ function transformBefore(node) {
                 return node;
             }
             /* a || b; => if (!a) { b; } */
-            if (node.body.operator === "||") {
+            if (node.body.operator === '||') {
                 node = new uglifyJS.AST_If({
-                    condition: new uglifyJS.AST_UnaryPrefix({operator: "!", expression: node.body.left}),
+                    condition: new uglifyJS.AST_UnaryPrefix({operator: '!', expression: node.body.left}),
                     body: asStatement(node.body.right),
                     alternative: null
                 });
@@ -176,10 +186,10 @@ function transformBefore(node) {
 
         /* return void a(); => a(); return; */
         if (node instanceof uglifyJS.AST_Block || node instanceof uglifyJS.AST_StatementWithBody) {
-            replaceInBlock(node, "body", function (child) {
+            replaceInBlock(node, 'body', child => {
                 if (child instanceof uglifyJS.AST_Return &&
                         child.value instanceof uglifyJS.AST_UnaryPrefix &&
-                        child.value.operator === "void") {
+                        child.value.operator === 'void') {
                     return [new uglifyJS.AST_SimpleStatement({ body: child.value.expression }),
                             new uglifyJS.AST_Return({ value: null }) ];
                 }
@@ -188,18 +198,10 @@ function transformBefore(node) {
     }
 }
 
-function decompress(node, options) {
-    var k, transform;
+function decompress(node, userOptions) {
+    let k, transform;
 
-    if (options === undefined) {
-        options = defaultOptions;
-    } else {
-        for (k in defaultOptions) {
-            if (defaultOptions.hasOwnProperty(k) && options[k] === undefined) {
-                options[k] = defaultOptions[k];
-            }
-        }
-    }
+    const options = _.defaults({}, userOptions, defaultOptions);
 
     transform = new uglifyJS.TreeTransformer(transformBefore);
     transform.options = options;

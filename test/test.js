@@ -1,18 +1,17 @@
-/*jslint node: true */
-/*global describe, it */
-"use strict";
+'use strict';
 
-var assert = require("assert"),
-    path = require("path"),
-    fs = require("fs"),
-    uglifyJS = require("uglifyjs"),
-    here = path.dirname(module.filename),
-    suffix = process.env.TEST_COV ? "-cov" : "",
-    unbrowserify = require("../unbrowserify" + suffix),
-    decompress = require("../decompress" + suffix);
+const assert = require('assert');
+const path = require('path');
+const fs = require('fs');
+const uglifyJS = require('uglifyjs');
+
+const here = path.dirname(module.filename);
+const suffix = process.env.TEST_COV ? '-cov' : '';
+const unbrowserify = require(`../unbrowserify${suffix}`);
+const decompress = require(`../decompress${suffix}`);
 
 function parseString(code, filename) {
-    var ast = uglifyJS.parse(code, {filename: filename});
+    const ast = uglifyJS.parse(code, {filename});
     ast.figure_out_scope();
     return ast;
 }
@@ -25,8 +24,9 @@ function formatCode(ast) {
     });
 }
 
-Object.values = function (obj) {
-    var key, values = [];
+Object.values = obj => {
+    let key;
+    const values = [];
     for (key in obj) {
         if (obj.hasOwnProperty(key)) {
             values.push(obj[key]);
@@ -35,80 +35,70 @@ Object.values = function (obj) {
     return values;
 };
 
-describe("unbrowserify", function () {
-    describe("formatCode", function () {
-        it("should output each var on a new line", function () {
-            var ast = parseString("var a = 1, b = 2, c = 3;");
-            assert.equal(formatCode(ast), "var a = 1,\n    b = 2,\n    c = 3;");
+describe('unbrowserify', () => {
+    describe('formatCode', () => {
+        it('should output each var on a new line', () => {
+            const ast = parseString('var a = 1, b = 2, c = 3;');
+            assert.equal(formatCode(ast), 'var a = 1,\n    b = 2,\n    c = 3;');
         });
 
-        it("should keep vars in a for on the same line", function () {
-            var ast = parseString("for (var i = 0, j = 0; ;) {}");
-            assert.equal(formatCode(ast), "for (var i = 0, j = 0; ;) {}");
+        it('should keep vars in a for on the same line', () => {
+            const ast = parseString('for (var i = 0, j = 0; ;) {}');
+            assert.equal(formatCode(ast), 'for (var i = 0, j = 0; ;) {}');
         });
     });
 
-    describe("findMainFunction", function () {
-        it("should find the main function", function () {
-            var ast = parseString("var foo; !function e(){ }(foo);"),
-                f = unbrowserify.findMainFunction(ast);
+    describe('findMainFunction', () => {
+        it('should find the main function', () => {
+            const ast = parseString('var foo; !function e(){ }(foo);'), f = unbrowserify.findMainFunction(ast);
 
             assert.equal(f instanceof uglifyJS.AST_Call, true);
-            assert.equal(f.expression.name.name, "e");
+            assert.equal(f.expression.name.name, 'e');
         });
 
-        it("should find the first function if multiple defined", function () {
-            var ast = parseString("var foo; !function e(){ }(foo); !function f(){ }(foo);"),
-                f = unbrowserify.findMainFunction(ast);
+        it('should throw if multiple main functions are found', () => {
+            assert.throws(() => {
+                const ast = parseString('var foo; !function e(){ }(foo); !function f(){ }(foo);');
 
-            assert.equal(f instanceof uglifyJS.AST_Call, true);
-            assert.equal(f.expression.name.name, "e");
+                unbrowserify.findMainFunction(ast);
+            });
         });
 
-        it("should return undefined if no functions are defined", function () {
-            var ast = parseString("var foo;"),
-                f = unbrowserify.findMainFunction(ast);
+        it('should return undefined if no functions are defined', () => {
+            const ast = parseString('var foo;'), f = unbrowserify.findMainFunction(ast);
 
             assert.equal(f, undefined);
         });
     });
 
     function extractHelper(bundleFilename, test) {
-        var bundle = path.resolve(here, "fib", bundleFilename),
-            bundleSource = fs.readFileSync(bundle, "utf8"),
-            ast = parseString(bundleSource, bundle),
-            mainFunction = unbrowserify.findMainFunction(ast),
-            moduleObject = mainFunction.args[0],
-            main = mainFunction.args[2],
-            moduleNames = unbrowserify.extractModuleNames(moduleObject, main);
+        const bundle = path.resolve(here, 'fib', bundleFilename), bundleSource = fs.readFileSync(bundle, 'utf8'), ast = parseString(bundleSource, bundle), mainFunction = unbrowserify.findMainFunction(ast), moduleObject = mainFunction.args[0], main = mainFunction.args[2], moduleNames = unbrowserify.extractModuleNames(moduleObject, main);
 
         test(moduleObject, moduleNames);
     }
 
-    describe("extractModuleNames", function () {
-        it("should find the module names", function () {
-            extractHelper("bundle.js", function (moduleObject, moduleNames) {
-                var modules = Object.values(moduleNames).sort();
-                assert.deepEqual(modules, ["fib", "main"]);
+    describe('extractModuleNames', () => {
+        it('should find the module names', () => {
+            extractHelper('bundle.js', (moduleObject, moduleNames) => {
+                const modules = Object.values(moduleNames).sort();
+                assert.deepEqual(modules, ['fib', 'main']);
             });
         });
 
-        it("should find the module names after compression", function () {
-            extractHelper("bundle-min.js", function (moduleObject, moduleNames) {
-                var modules = Object.values(moduleNames).sort();
-                assert.deepEqual(modules, ["fib", "main"]);
+        it('should find the module names after compression', () => {
+            extractHelper('bundle-min.js', (moduleObject, moduleNames) => {
+                const modules = Object.values(moduleNames).sort();
+                assert.deepEqual(modules, ['fib', 'main']);
             });
         });
     });
 
-    describe("extractModules", function () {
-        var fib = path.resolve(here, "fib", "fib.js"),
-            fibSource = fs.readFileSync(fib, "utf8"),
-            expected = parseString(fibSource, fib);
+    describe('extractModules', () => {
+        const fib = path.resolve(here, 'fib', 'fib.js'), fibSource = fs.readFileSync(fib, 'utf8'), expected = parseString(fibSource, fib);
 
-        it("should find the modules", function () {
-            extractHelper("bundle.js", function (moduleObject, moduleNames) {
-                var modules = unbrowserify.extractModules(moduleObject, moduleNames);
+        it('should find the modules', () => {
+            extractHelper('bundle.js', (moduleObject, moduleNames) => {
+                const modules = unbrowserify.extractModules(moduleObject, moduleNames);
 
                 assert.ok(modules.main instanceof uglifyJS.AST_Toplevel);
                 assert.ok(modules.fib instanceof uglifyJS.AST_Toplevel);
@@ -118,9 +108,9 @@ describe("unbrowserify", function () {
             });
         });
 
-        it("should find the modules after compression", function () {
-            extractHelper("bundle-min.js", function (moduleObject, moduleNames) {
-                var modules = unbrowserify.extractModules(moduleObject, moduleNames);
+        it('should find the modules after compression', () => {
+            extractHelper('bundle-min.js', (moduleObject, moduleNames) => {
+                const modules = unbrowserify.extractModules(moduleObject, moduleNames);
 
                 assert.ok(modules.main instanceof uglifyJS.AST_Toplevel);
                 assert.ok(modules.fib instanceof uglifyJS.AST_Toplevel);
@@ -131,32 +121,30 @@ describe("unbrowserify", function () {
     });
 });
 
-describe("decompress", function () {
-    var directory = path.resolve(here, "decompress");
+describe('decompress', () => {
+    const directory = path.resolve(here, 'decompress');
 
     function findTestFiles() {
-        var isJs = /\.js$/;
-        return fs.readdirSync(directory).filter(function (name) {
-            return isJs.test(name);
-        });
+        const isJs = /\.js$/;
+        return fs.readdirSync(directory).filter(name => isJs.test(name));
     }
 
     function getTestCases(filename) {
-        var code = fs.readFileSync(path.resolve(directory, filename), "utf8"),
-            ast = parseString(code, filename),
-            inTest = false,
-            testCase,
-            cases = [],
-            tw;
+        const code = fs.readFileSync(path.resolve(directory, filename), 'utf8');
+        const ast = parseString(code, filename);
+        let inTest = false;
+        let testCase;
+        const cases = [];
+        let tw;
 
         tw = new uglifyJS.TreeWalker(function (node, descend) {
-            var name;
+            let name;
 
             if (node instanceof uglifyJS.AST_LabeledStatement) {
                 name = node.label.name;
 
                 if (this.parent() instanceof uglifyJS.AST_Toplevel) {
-                    testCase = {name: name};
+                    testCase = {name};
                     cases.push(testCase);
                     inTest = true;
                     descend();
@@ -164,21 +152,21 @@ describe("decompress", function () {
                     return true;
                 }
 
-                if (name === "description") {
+                if (name === 'description') {
                     testCase[name] = node.body.start.value;
                     return true;
                 }
 
-                if (name === "input" || name === "expect") {
+                if (name === 'input' || name === 'expect') {
                     testCase[name] = node.body;
                     return true;
                 }
 
-                throw new Error("Unsupported label '" + name + "' at line " + node.label.start.line);
+                throw new Error(`Unsupported label '${name}' at line ${node.label.start.line}`);
             }
 
             if (!inTest && !(node instanceof uglifyJS.AST_Toplevel)) {
-                throw new Error("Unsupported statement " + node.TYPE + " at line " + node.start.line);
+                throw new Error(`Unsupported statement ${node.TYPE} at line ${node.start.line}`);
             }
         });
         ast.walk(tw);
@@ -186,11 +174,11 @@ describe("decompress", function () {
         return cases;
     }
 
-    findTestFiles().forEach(function (filename) {
-        describe(filename, function () {
-            getTestCases(filename).forEach(function (testCase) {
-                it(testCase.description || testCase.name, function () {
-                    var output, expect;
+    findTestFiles().forEach(filename => {
+        describe(filename, () => {
+            getTestCases(filename).forEach(testCase => {
+                it(testCase.description || testCase.name, () => {
+                    let output, expect;
 
                     decompress(testCase.input);
 
