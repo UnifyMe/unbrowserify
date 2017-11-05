@@ -7,7 +7,7 @@ const fs = Promise.promisifyAll(require('fs'));
 const path = require('path');
 
 const _ = require('lodash');
-const uglifyJS = require('uglifyjs')
+const uglifyJS = require('uglify-js')
 const decompress = require('./decompress');
 
 const assert = require('assert');

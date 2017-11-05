@@ -1,4 +1,4 @@
-const uglifyJS = require('uglifyjs');
+const uglifyJS = require('uglify-js');
 const _ = require('lodash');
 
 const defaultOptions = {

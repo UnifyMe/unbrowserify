@@ -15,6 +15,6 @@ test/fib/bundle.js: test/fib/main.js test/fib/fib.js
 	jscoverage $<
 
 %-min.js: %.js
-	uglifyjs $< --output $@ --compress --mangle
+	uglify-js $< --output $@ --compress --mangle
 
 .PHONY: test lint coverage

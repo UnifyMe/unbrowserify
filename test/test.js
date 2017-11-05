@@ -3,7 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
-const uglifyJS = require('uglifyjs');
+const uglifyJS = require('uglify-js');
 
 const here = path.dirname(module.filename);
 const suffix = process.env.TEST_COV ? '-cov' : '';
