@@ -56,10 +56,19 @@ uglifyES.AST_Definitions.prototype._do_print = function (output, kind) {
 const parseFile = function* (filename) {
     const code = yield fs.readFileAsync(filename, 'utf8');
 
-    const ast = uglifyJS.parse(code, {
-        filename
+    const result = uglifyES.minify({[filename]: code}, {
+        parse: {},
+        compress: false,
+        mangle: false,
+        output: {
+            ast: true,
+            code: false  // optional - faster if false
+        }
     });
 
+    if(result.error) throw result.error
+
+    const ast = result.ast
     ast.figure_out_scope();
 
     return ast;

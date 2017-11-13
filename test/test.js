@@ -11,7 +11,15 @@ const unbrowserify = require(`../unbrowserify${suffix}`);
 const decompress = require(`../decompress${suffix}`);
 
 function parseString(code, filename) {
-    const ast = uglifyJS.parse(code, {filename});
+    const ast = uglifyES.minify({[filename]: code}, {
+        parse: {},
+        compress: false,
+        mangle: false,
+        output: {
+            ast: true,
+            code: false  // optional - faster if false
+        }
+    }).ast;
     ast.figure_out_scope();
     return ast;
 }
