@@ -3,7 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
-const uglifyJS = require('uglify-js');
+const uglifyES = require('uglify-es');
 
 const here = path.dirname(module.filename);
 const suffix = process.env.TEST_COV ? '-cov' : '';
@@ -52,7 +52,7 @@ describe('unbrowserify', () => {
         it('should find the main function', () => {
             const ast = parseString('var foo; !function e(){ }(foo);'), f = unbrowserify.findMainFunction(ast);
 
-            assert.equal(f instanceof uglifyJS.AST_Call, true);
+            assert.equal(f instanceof uglifyES.AST_Call, true);
             assert.equal(f.expression.name.name, 'e');
         });
 
@@ -100,8 +100,8 @@ describe('unbrowserify', () => {
             extractHelper('bundle.js', (moduleObject, moduleNames) => {
                 const modules = unbrowserify.extractModules(moduleObject, moduleNames);
 
-                assert.ok(modules.main instanceof uglifyJS.AST_Toplevel);
-                assert.ok(modules.fib instanceof uglifyJS.AST_Toplevel);
+                assert.ok(modules.main instanceof uglifyES.AST_Toplevel);
+                assert.ok(modules.fib instanceof uglifyES.AST_Toplevel);
 
                 /* Check round-trip. */
                 assert.equal(formatCode(modules.fib), formatCode(expected));
@@ -112,8 +112,8 @@ describe('unbrowserify', () => {
             extractHelper('bundle-min.js', (moduleObject, moduleNames) => {
                 const modules = unbrowserify.extractModules(moduleObject, moduleNames);
 
-                assert.ok(modules.main instanceof uglifyJS.AST_Toplevel);
-                assert.ok(modules.fib instanceof uglifyJS.AST_Toplevel);
+                assert.ok(modules.main instanceof uglifyES.AST_Toplevel);
+                assert.ok(modules.fib instanceof uglifyES.AST_Toplevel);
 
                 /* The code for the two modules is no longer equal, because it has been compressed. */
             });
@@ -137,13 +137,13 @@ describe('decompress', () => {
         const cases = [];
         let tw;
 
-        tw = new uglifyJS.TreeWalker(function (node, descend) {
+        tw = new uglifyES.TreeWalker(function (node, descend) {
             let name;
 
-            if (node instanceof uglifyJS.AST_LabeledStatement) {
+            if (node instanceof uglifyES.AST_LabeledStatement) {
                 name = node.label.name;
 
-                if (this.parent() instanceof uglifyJS.AST_Toplevel) {
+                if (this.parent() instanceof uglifyES.AST_Toplevel) {
                     testCase = {name};
                     cases.push(testCase);
                     inTest = true;
@@ -165,7 +165,7 @@ describe('decompress', () => {
                 throw new Error(`Unsupported label '${name}' at line ${node.label.start.line}`);
             }
 
-            if (!inTest && !(node instanceof uglifyJS.AST_Toplevel)) {
+            if (!inTest && !(node instanceof uglifyES.AST_Toplevel)) {
                 throw new Error(`Unsupported statement ${node.TYPE} at line ${node.start.line}`);
             }
         });

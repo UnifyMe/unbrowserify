@@ -7,7 +7,7 @@ const fs = Promise.promisifyAll(require('fs'));
 const path = require('path');
 
 const _ = require('lodash');
-const uglifyJS = require('uglify-js')
+const uglifyES = require('uglify-es')
 const decompress = require('./decompress');
 
 const assert = require('assert');
@@ -21,10 +21,10 @@ const outputOptions = {
 };
 
 /* Override printing of variable definitions to output each var on a separate line. */
-uglifyJS.AST_Definitions.prototype._do_print = function (output, kind) {
+uglifyES.AST_Definitions.prototype._do_print = function (output, kind) {
     var self = this,
         p = output.parent(),
-        inFor = (p instanceof uglifyJS.AST_For || p instanceof uglifyJS.AST_ForIn) && p.init === this;
+        inFor = (p instanceof uglifyES.AST_For || p instanceof uglifyES.AST_ForIn) && p.init === this;
 
     output.print(kind);
     output.space();
@@ -76,8 +76,8 @@ function outputCode(ast, filename) {
 const findMainFunction = ast => {
     let mainFunctionCall;
 
-    const visitor = new uglifyJS.TreeWalker(node => {
-        if (node instanceof uglifyJS.AST_Call) {
+    const visitor = new uglifyES.TreeWalker(node => {
+        if (node instanceof uglifyES.AST_Call) {
             assert(mainFunctionCall === undefined, 'More than one top-level function found.');
 
             mainFunctionCall = node;
@@ -140,12 +140,12 @@ function renameArguments(moduleFunction) {
 function updateRequires(moduleFunction, mapping) {
     var visitor, name;
 
-    visitor = new uglifyJS.TreeWalker(node => {
-        if (node instanceof uglifyJS.AST_Call &&
-                node.expression instanceof uglifyJS.AST_SymbolRef &&
+    visitor = new uglifyES.TreeWalker(node => {
+        if (node instanceof uglifyES.AST_Call &&
+                node.expression instanceof uglifyES.AST_SymbolRef &&
                 (node.expression.name === 'require' || node.expression.thedef.mangled_name === 'require') &&
                 node.args.length === 1 &&
-                node.args[0] instanceof uglifyJS.AST_String) {
+                node.args[0] instanceof uglifyES.AST_String) {
 
             name = path.basename(node.args[0].value, '.js');
 
@@ -207,7 +207,7 @@ const resolveModulePaths = moduleDefinitions => {
 function extractModules(moduleObject, moduleNames) {
     const modules = {};
 
-    modules.main = new uglifyJS.AST_Toplevel({body: []});
+    modules.main = new uglifyES.AST_Toplevel({body: []});
 
     // moduleName moduleFunction
     const moduleProperties = moduleObject.properties.map(objectProperty => {
@@ -232,7 +232,7 @@ function extractModules(moduleObject, moduleNames) {
     const resolvedModuleProperties = moduleProperties;
 
     resolvedModuleProperties.forEach(({moduleName, moduleFunction, moduleMapping}) => {
-        const module = modules[moduleName] || new uglifyJS.AST_Toplevel({body: []});
+        const module = modules[moduleName] || new uglifyES.AST_Toplevel({body: []});
 
         modules[moduleName] = module;
 
@@ -272,7 +272,7 @@ const unbrowserify = Promise.coroutine(function* (filename, outputDirectory) {
 
     const [moduleObject, __nop__, main] = mainFunction.args;
 
-    assert(moduleObject instanceof uglifyJS.AST_Object, `${filename}: first argument should be an object.`);
+    assert(moduleObject instanceof uglifyES.AST_Object, `${filename}: first argument should be an object.`);
 
     const moduleNames = extractModuleNames(moduleObject, main);
     const modules = extractModules(moduleObject, moduleNames);
