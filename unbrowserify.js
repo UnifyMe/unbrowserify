@@ -104,7 +104,7 @@ const extractModuleNames = (moduleObject, main) => {
     var moduleNames = {};
 
     main.elements.forEach(element => {
-        moduleNames[element.value] = 'main';
+        moduleNames[element.value] = 'index';
     });
 
     moduleObject.properties.forEach(function (objectProperty) {
@@ -218,7 +218,7 @@ const resolveModulePaths = moduleDefinitions => {
 function extractModules(moduleObject, moduleNames) {
     const modules = {};
 
-    modules.main = new uglifyES.AST_Toplevel({body: []});
+    modules.index = new uglifyES.AST_Toplevel({body: []});
 
     // moduleName moduleFunction
     const moduleProperties = moduleObject.properties.map(objectProperty => {
