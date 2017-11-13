@@ -132,6 +132,7 @@ function renameArguments(moduleFunction) {
      * special logic to display the mangled name if it's present. */
     moduleFunction.argnames.forEach(function (arg, i) {
         if (arg.name !== argNames[i]) {
+            if(arg.thedef == null) arg.thedef = {}
             arg.thedef.mangled_name = argNames[i];
         }
     });
@@ -143,7 +144,8 @@ function updateRequires(moduleFunction, mapping) {
     visitor = new uglifyES.TreeWalker(node => {
         if (node instanceof uglifyES.AST_Call &&
                 node.expression instanceof uglifyES.AST_SymbolRef &&
-                (node.expression.name === 'require' || node.expression.thedef.mangled_name === 'require') &&
+                (node.expression.name === 'require' ||
+                 (node.expression.thedef && node.expression.thedef.mangled_name === 'require')) &&
                 node.args.length === 1 &&
                 node.args[0] instanceof uglifyES.AST_String) {
 
