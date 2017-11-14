@@ -110,16 +110,32 @@ const extractModuleNames = (moduleObject, main) => {
         moduleNames[element.value] = 'index';
     });
 
-    moduleObject.properties.forEach(function (objectProperty) {
+    const properties = [...moduleObject.properties]
+
+    while(properties.length)
+    {
+        const objectProperty = properties.shift()
+
         var moduleId = objectProperty.key,
             moduleFunction = objectProperty.value.elements[0],
             requireMapping = objectProperty.value.elements[1];
 
-        /* TODO: Resolve module names relative to output directory. */
+        const moduleName = moduleNames[moduleId]
+        if(!moduleName)
+        {
+          properties.push(objectProperty)
+          continue
+        }
 
+        const basePath = path.dirname(moduleName)
         requireMapping.properties.forEach(function (prop) {
-            var name = path.basename(prop.key, '.js'),
+            var name = prop.key,
                 id = prop.value.value;
+
+            if(name.startsWith('.'))
+                name = path.join(basePath, name)
+            else
+                name = path.join('node_modules', name, 'index')
 
             if (!moduleNames[id]) {
                 moduleNames[id] = name;
@@ -129,8 +145,7 @@ const extractModuleNames = (moduleObject, main) => {
                 console.warn('    ' + name);
             }
         });
-    });
-
+    }
     return moduleNames;
 }
 
@@ -225,10 +240,9 @@ function extractModules(moduleObject, moduleNames) {
 
     function isNotBuiltinModule(objectProperty)
     {
-        const name = moduleNames[objectProperty.key]
+        const path = moduleNames[objectProperty.key].split('/')
 
-        return !(name.startsWith('node_modules/')
-        && isBuiltinModule(name.slice(13)))
+        return !(path[0] === 'node_modules' && path[1] && isBuiltinModule(path[1]))
     }
 
     // moduleName moduleFunction
