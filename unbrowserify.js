@@ -233,18 +233,19 @@ const resolveModulePaths = moduleDefinitions => {
     });
 };
 
+function isNotBuiltinModule(objectProperty)
+{
+    const path = this[objectProperty.key].split('/')
+
+    return !(path[0] === 'node_modules' && path[1] && isBuiltinModule(path[1]))
+}
+
 function extractModules(moduleObject, moduleNames) {
-
-    function isNotBuiltinModule(objectProperty)
-    {
-        const path = moduleNames[objectProperty.key].split('/')
-
-        return !(path[0] === 'node_modules' && path[1] && isBuiltinModule(path[1]))
-    }
     const modules = {browser: new uglifyES.AST_Toplevel({body: []})};
 
-    // moduleName moduleFunction
-    const moduleProperties = moduleObject.properties.filter(isNotBuiltinModule)
+    // modulename moduleFunction
+    const moduleProperties = moduleObject.properties
+    .filter(isNotBuiltinModule, moduleNames)
     .map(objectProperty => {
         const moduleId = objectProperty.key;
         const [moduleFunction, requireMapping] = objectProperty.value.elements;
