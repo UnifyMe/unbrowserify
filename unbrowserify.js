@@ -3,6 +3,7 @@
 
 const Promise = require('bluebird');
 
+const assert = require('assert');
 const fs = Promise.promisifyAll(require('fs'));
 const path = require('path');
 
@@ -10,9 +11,8 @@ const _ = require('lodash');
 const isBuiltinModule = require('is-builtin-module');
 const mkdirp = require('mkdirp-promise');
 const uglifyES = require('uglify-es')
-const decompress = require('./decompress');
 
-const assert = require('assert');
+const decompress = require('./decompress');
 
 /* Default options */
 
