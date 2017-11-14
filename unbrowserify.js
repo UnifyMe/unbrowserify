@@ -7,6 +7,7 @@ const fs = Promise.promisifyAll(require('fs'));
 const path = require('path');
 
 const _ = require('lodash');
+const mkdirp = require('mkdirp-promise');
 const uglifyES = require('uglify-es')
 const decompress = require('./decompress');
 
@@ -79,7 +80,8 @@ function outputCode(ast, filename) {
 
     if (!filename) return console.log(code);
 
-    return fs.writeFileAsync(filename, code);
+    return mkdirp(path.dirname(filename))
+    .then(() => fs.writeFileAsync(filename, code));
 }
 
 const findMainFunction = ast => {
