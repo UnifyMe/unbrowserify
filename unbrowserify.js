@@ -107,7 +107,7 @@ const extractModuleNames = (moduleObject, main) => {
     var moduleNames = {};
 
     main.elements.forEach(element => {
-        moduleNames[element.value] = 'index';
+        moduleNames[element.value] = 'browser';
     });
 
     const properties = [...moduleObject.properties]
@@ -234,9 +234,6 @@ const resolveModulePaths = moduleDefinitions => {
 };
 
 function extractModules(moduleObject, moduleNames) {
-    const modules = {};
-
-    modules.index = new uglifyES.AST_Toplevel({body: []});
 
     function isNotBuiltinModule(objectProperty)
     {
@@ -244,6 +241,7 @@ function extractModules(moduleObject, moduleNames) {
 
         return !(path[0] === 'node_modules' && path[1] && isBuiltinModule(path[1]))
     }
+    const modules = {browser: new uglifyES.AST_Toplevel({body: []})};
 
     // moduleName moduleFunction
     const moduleProperties = moduleObject.properties.filter(isNotBuiltinModule)
