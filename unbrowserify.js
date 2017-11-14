@@ -111,7 +111,6 @@ const extractModuleNames = (moduleObject, main) => {
     });
 
     const properties = [...moduleObject.properties]
-
     while(properties.length)
     {
         const objectProperty = properties.shift()
@@ -120,29 +119,32 @@ const extractModuleNames = (moduleObject, main) => {
             moduleFunction = objectProperty.value.elements[0],
             requireMapping = objectProperty.value.elements[1];
 
-        const moduleName = moduleNames[moduleId]
+        let moduleName = moduleNames[moduleId]
         if(!moduleName)
         {
           properties.push(objectProperty)
           continue
         }
 
-        const basePath = path.dirname(moduleName)
         requireMapping.properties.forEach(function (prop) {
             var name = prop.key,
                 id = prop.value.value;
 
             if(name.startsWith('.'))
-                name = path.join(basePath, name)
+                name = path.join(path.dirname(moduleName), name)
             else
                 name = path.join('node_modules', name, 'index')
 
             if (!moduleNames[id]) {
                 moduleNames[id] = name;
             } else if (moduleNames[id].toLowerCase() !== name.toLowerCase()) {
-                console.warn('More than one name found for module ' + id + ':');
-                console.warn('    ' + moduleNames[id]);
-                console.warn('    ' + name);
+                if(moduleNames[id].length <= name.length) {
+                    console.warn('More than one name found for module ' + id + ':');
+                    console.warn('    ' + moduleNames[id]);
+                    console.warn('    ' + name);
+                }
+                else
+                    moduleNames[moduleId] = moduleName += '/index';
             }
         });
     }
