@@ -7,6 +7,7 @@ const fs = Promise.promisifyAll(require('fs'));
 const path = require('path');
 
 const _ = require('lodash');
+const isBuiltinModule = require('is-builtin-module');
 const mkdirp = require('mkdirp-promise');
 const uglifyES = require('uglify-es')
 const decompress = require('./decompress');
@@ -222,8 +223,17 @@ function extractModules(moduleObject, moduleNames) {
 
     modules.index = new uglifyES.AST_Toplevel({body: []});
 
+    function isNotBuiltinModule(objectProperty)
+    {
+        const name = moduleNames[objectProperty.key]
+
+        return !(name.startsWith('node_modules/')
+        && isBuiltinModule(name.slice(13)))
+    }
+
     // moduleName moduleFunction
-    const moduleProperties = moduleObject.properties.map(objectProperty => {
+    const moduleProperties = moduleObject.properties.filter(isNotBuiltinModule)
+    .map(objectProperty => {
         const moduleId = objectProperty.key;
         const [moduleFunction, requireMapping] = objectProperty.value.elements;
 
