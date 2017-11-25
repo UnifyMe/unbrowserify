@@ -7,12 +7,15 @@ const assert = require('assert');
 const fs = Promise.promisifyAll(require('fs'));
 const path = require('path');
 
+const latestVersion = require('latest-version');
 const _ = require('lodash');
 const isBuiltinModule = require('is-builtin-module');
 const mkdirp = require('mkdirp-promise');
 const uglifyES = require('uglify-es')
 
 const decompress = require('./decompress');
+
+const dependencies = new Set()
 
 /* Default options */
 
@@ -133,6 +136,9 @@ const extractModuleNames = (moduleObject, main) => {
             if(name.startsWith('.'))
                 name = path.join(path.dirname(moduleName), name)
             else
+                // Builtin modules could be filtered here, but it's better to
+                // add them so modules can be check to don't have several names
+                // (also as builtins) as a sanity check
                 name = path.join('node_modules', name, 'index')
 
             if (!moduleNames[id]) {
@@ -242,12 +248,34 @@ function isNotBuiltinModule(objectProperty)
     return !(path[0] === 'node_modules' && path[1] && isBuiltinModule(path[1]))
 }
 
+function isNotPublishedDependency(objectProperty)
+{
+    const path = this[objectProperty.key].split('/')
+
+    if(path[0] === 'node_modules')
+    {
+      let name = path[1]
+      if(name[0] === '@' && path[2]) name = `${name}/${path[2]}`  // scoped
+
+      // npm only allow lowercase named packages
+      if(name === name.toLowerCase())
+      {
+        dependencies.add(name)
+
+        return false
+      }
+    }
+
+    return true
+}
+
 function extractModules(moduleObject, moduleNames) {
     const modules = {browser: new uglifyES.AST_Toplevel({body: []})};
 
     // modulename moduleFunction
     const moduleProperties = moduleObject.properties
     .filter(isNotBuiltinModule, moduleNames)
+    .filter(isNotPublishedDependency, moduleNames)
     .map(objectProperty => {
         const moduleId = objectProperty.key;
         const [moduleFunction, requireMapping] = objectProperty.value.elements;
@@ -286,6 +314,29 @@ function extractModules(moduleObject, moduleNames) {
     return modules;
 }
 
+function writePackageJson(packageJson)
+{
+  if(!dependencies.size)
+    return writePackageJson2(packageJson)
+
+  const names = [...dependencies].sort()
+
+  return Promise.all(names.map(latestVersion))
+  .then(versions =>
+  {
+    packageJson.dependencies = versions.reduce((result, version, index) =>
+      ({...result, [names[index]]: `^${version}`}), {})
+
+    return packageJson
+  })
+  .then(writePackageJson2)
+}
+
+function writePackageJson2(packageJson)
+{
+  return fs.writeFileAsync('package.json', JSON.stringify(packageJson, null, 2))
+}
+
 const unbrowserify = Promise.coroutine(function* (filename, outputDirectory) {
     const ast = yield* parseFile(filename);
 
@@ -315,7 +366,7 @@ const unbrowserify = Promise.coroutine(function* (filename, outputDirectory) {
     const moduleNames = extractModuleNames(moduleObject, main);
     const modules = extractModules(moduleObject, moduleNames);
 
-    Promise.all(
+    return Promise.all(
         Object.keys(modules)
         .map(module => [module, modules[module]])
         .map(([moduleName, module]) => {
@@ -326,7 +377,24 @@ const unbrowserify = Promise.coroutine(function* (filename, outputDirectory) {
 
             return outputCode(module, moduleFile);
         })
-    );
+    )
+    .then(() => {
+      filename = filename.split('/')
+
+      writePackageJson({
+        name: filename[filename.length-1],
+        main: path.join(outputDirectory, moduleNames[2] + '.js'),
+        browser: path.join(outputDirectory, moduleNames[1] + '.js'),
+        scripts:
+        {
+          test: "node -e \"require('.')\""
+        },
+        devDependencies:
+        {
+          unbrowserify: 'UnifyMe/unbrowserify'
+        }
+      })
+    });
 });
 
 module.exports = {
